@@ -1,0 +1,110 @@
+{
+  "id": 1734099604908,
+  "appId": "com.example.app",
+  "activityId": "com.example.app.MainActivity",
+  "screenHeight": 2400,
+  "screenWidth": 1080,
+  "isLandscape": false,
+  "appInfo": {
+    "id": "com.example.app",
+    "name": "示例应用",
+    "versionCode": 100,
+    "versionName": "1.0.0",
+    "isSystem": false,
+    "mtime": 1734099600000,
+    "hidden": false,
+    "userId": 0
+  },
+  "gkdAppInfo": null,
+  "device": {
+    "device": "test",
+    "model": "Test Phone",
+    "manufacturer": "Test",
+    "brand": "Test",
+    "sdkInt": 35,
+    "release": "15"
+  },
+  "nodes": [
+    {
+      "id": 0,
+      "pid": -1,
+      "attr": {
+        "id": "com.example.app:id/root",
+        "vid": "root",
+        "name": "android.widget.FrameLayout",
+        "text": null,
+        "desc": null,
+        "clickable": false,
+        "focusable": true,
+        "checkable": false,
+        "editable": false,
+        "longClickable": false,
+        "visibleToUser": true,
+        "left": 0,
+        "top": 0,
+        "right": 1080,
+        "bottom": 2400,
+        "width": 1080,
+        "height": 2400,
+        "childCount": 1,
+        "index": 0,
+        "depth": 0
+      }
+    },
+    {
+      "id": 1,
+      "pid": 0,
+      "idQf": true,
+      "attr": {
+        "id": "com.example.app:id/ad_container",
+        "vid": "ad_container",
+        "name": "android.widget.LinearLayout",
+        "text": null,
+        "desc": null,
+        "clickable": false,
+        "focusable": false,
+        "checkable": false,
+        "editable": false,
+        "longClickable": false,
+        "visibleToUser": true,
+        "left": 0,
+        "top": 0,
+        "right": 1080,
+        "bottom": 300,
+        "width": 1080,
+        "height": 300,
+        "childCount": 1,
+        "index": 0,
+        "depth": 1
+      }
+    },
+    {
+      "id": 2,
+      "pid": 1,
+      "idQf": true,
+      "textQf": true,
+      "attr": {
+        "id": "com.example.app:id/skip",
+        "vid": "skip",
+        "name": "android.widget.Button",
+        "text": "跳过",
+        "desc": "跳过广告",
+        "clickable": true,
+        "focusable": true,
+        "checkable": false,
+        "editable": false,
+        "longClickable": false,
+        "visibleToUser": true,
+        "left": 840,
+        "top": 96,
+        "right": 1080,
+        "bottom": 240,
+        "width": 240,
+        "height": 144,
+        "childCount": 0,
+        "index": 0,
+        "depth": 2
+      }
+    }
+  ]
+}

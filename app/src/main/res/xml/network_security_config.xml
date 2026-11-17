@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 本地调试工具：允许任意明文 HTTP（GKD 调试服务默认 127.0.0.1:8888，也可编辑为局域网地址） -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

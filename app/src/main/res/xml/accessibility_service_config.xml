@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  模块 1：无障碍服务配置
+  - typeViewClicked：监听点击事件（核心）
+  - typeWindowContentChanged / typeWindowStateChanged：为后续模块的弹窗检测预留
+  - flagReportViewIds：必须开启，否则拿不到 viewIdResourceName
+  - flagIncludeNotImportantViews：包含"不重要"的节点，避免漏掉可点击控件
+  - flagRetrieveInteractiveWindows：检索交互窗口（后续弹窗检测用）
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeViewClicked|typeWindowContentChanged|typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagReportViewIds|flagIncludeNotImportantViews|flagRetrieveInteractiveWindows|flagRequestFilterKeyEvents"
+    android:canRequestFilterKeyEvents="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="100"
+    android:settingsActivity="com.gkdbrain.app.MainActivity" />

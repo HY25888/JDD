@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 蓝色圆底 -->
+    <path
+        android:fillColor="#3F51B5"
+        android:pathData="M54,54m-52,0a52,52 0,1 1,104 0a52,52 0,1 1,-104 0" />
+    <!-- 黄色闪电，寓意"快速跳过" -->
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M58,22 L34,58 L50,58 L46,86 L72,50 L56,50 Z" />
+</vector>
