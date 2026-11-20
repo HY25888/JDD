@@ -45,6 +45,16 @@ object CapturePipeline {
     @Volatile
     var autoMode = false
 
+    /** 自动模式下各触发方式的子开关（默认开）：磁贴 / 音量键截图 / 悬浮球 */
+    @Volatile
+    var autoModeTile = true
+
+    @Volatile
+    var autoModeVolume = true
+
+    @Volatile
+    var autoModeButton = true
+
     /** 最近一次激活等待点击的时间戳，用于 cancelWaiting 的时间保护 */
     @Volatile
     private var lastActivateTime = 0L
@@ -67,8 +77,8 @@ object CapturePipeline {
                 }
                 is GkdHttpResult.Success -> {
                     pendingSnapshot = r.value
-                    if (autoMode) {
-                        AppLog.i("★ 已激活（自动模式）：快照已抓取（${r.value.nodes.size} 节点），自动查找关闭按钮")
+                    if (autoMode && autoModeTile) {
+                        AppLog.i("★ 已激活（自动模式·磁贴）：快照已抓取（${r.value.nodes.size} 节点），自动查找关闭按钮")
                         autoExecute(r.value)
                         isCapturing = false
                     } else {
@@ -89,8 +99,18 @@ object CapturePipeline {
         }
     }
 
-    /** 悬浮按钮触发：立即抓快照（不收起面板、不延时），进入「等待第一次点击」状态 */
+    /** 悬浮按钮触发：立即抓快照（不收起面板、不延时） */
     fun prepareFromButton() {
+        prepareImmediate(autoMode && autoModeButton, "悬浮按钮")
+    }
+
+    /** 音量键 + 手动截图触发 */
+    fun prepareFromVolume() {
+        prepareImmediate(autoMode && autoModeVolume, "音量键截图")
+    }
+
+    /** 立即抓快照的公共流程：抓前移除悬浮球，抓后恢复 */
+    private fun prepareImmediate(auto: Boolean, sourceLabel: String) {
         scope.launch {
             isCapturing = true
             SnapshotButtonManager.setVisible(false) // 抓前移除按钮，避免被快照捕获
@@ -103,14 +123,14 @@ object CapturePipeline {
                 }
                 is GkdHttpResult.Success -> {
                     pendingSnapshot = result.value
-                    if (autoMode) {
-                        AppLog.i("★ 已激活（自动模式）：快照已抓取（${result.value.nodes.size} 节点），自动查找关闭按钮")
+                    if (auto) {
+                        AppLog.i("★ 已激活（自动模式·$sourceLabel）：快照已抓取（${result.value.nodes.size} 节点），自动查找关闭按钮")
                         autoExecute(result.value)
                         isCapturing = false
                     } else {
                         ClickCaptureManager.setWaitingForClick(true)
                         lastActivateTime = System.currentTimeMillis()
-                        AppLog.i("★ 已激活（悬浮按钮）：快照已抓取（${result.value.nodes.size} 节点），6 秒内点击目标控件")
+                        AppLog.i("★ 已激活（$sourceLabel）：快照已抓取（${result.value.nodes.size} 节点），6 秒内点击目标控件")
                         delay(9000)
                         if (ClickCaptureManager.waitingForClick.value) {
                             pendingSnapshot = null

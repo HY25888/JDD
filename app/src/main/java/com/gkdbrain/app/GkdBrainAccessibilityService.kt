@@ -114,7 +114,7 @@ class GkdBrainAccessibilityService : AccessibilityService() {
                     if (event and FileObserver.CREATE != 0 || event and FileObserver.CLOSE_WRITE != 0) {
                         stopScreenshotWatch()
                         handler.postDelayed({
-                            CapturePipeline.prepareFromButton()
+                            CapturePipeline.prepareFromVolume()
                             AppLog.i("截图后触发快照")
                         }, 500)
                     }
@@ -260,6 +260,11 @@ class GkdBrainAccessibilityService : AccessibilityService() {
         HistoryStore.init(applicationContext)
         LearningMode.load(applicationContext)
         AdFeatureStore.init(applicationContext)
+        val p = getSharedPreferences("gkd_settings", MODE_PRIVATE)
+        CapturePipeline.autoMode = p.getBoolean("auto_mode", true)
+        CapturePipeline.autoModeTile = p.getBoolean("auto_mode_tile", true)
+        CapturePipeline.autoModeVolume = p.getBoolean("auto_mode_volume", true)
+        CapturePipeline.autoModeButton = p.getBoolean("auto_mode_button", true)
         _connected.value = true
         AppLog.i("无障碍服务已连接")
     }

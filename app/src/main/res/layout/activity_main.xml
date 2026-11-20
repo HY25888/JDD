@@ -324,6 +324,103 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
 
+        <!-- 自动模式子开关（总开关开启时展开，可单独关闭某触发方式） -->
+        <LinearLayout
+            android:id="@+id/auto_mode_sub_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="磁贴"
+                    android:textSize="13sp" />
+
+                <Switch
+                    android:id="@+id/auto_mode_tile_switch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="音量键加截图"
+                    android:textSize="13sp" />
+
+                <Switch
+                    android:id="@+id/auto_mode_volume_switch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="悬浮球"
+                    android:textSize="13sp" />
+
+                <Switch
+                    android:id="@+id/auto_mode_button_switch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 隐藏后台卡片 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="隐藏后台卡片"
+                android:textSize="14sp" />
+
+            <Switch
+                android:id="@+id/hide_from_recents_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:text="提示：隐藏卡片最好是先长按后台任务卡片让系统给JDD上锁再开启隐藏，不然一键清空的时候有可能清空掉已隐藏的卡片"
+            android:textSize="11sp" />
+
         <!-- 历史记录（文件夹入口卡片，点击进入独立空间查看全部） -->
         <TextView
             android:layout_width="wrap_content"

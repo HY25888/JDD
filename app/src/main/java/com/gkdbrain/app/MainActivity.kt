@@ -1,5 +1,6 @@
 package com.gkdbrain.app
 
+import android.app.ActivityManager
 import android.app.AppOpsManager
 import android.content.ComponentName
 import android.content.Context
@@ -59,6 +60,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var snapshotButtonSwitch: Switch
     private lateinit var volumeSnapshotSwitch: Switch
     private lateinit var autoModeSwitch: Switch
+    private lateinit var autoModeTileSwitch: Switch
+    private lateinit var autoModeVolumeSwitch: Switch
+    private lateinit var autoModeButtonSwitch: Switch
+    private lateinit var autoModeSubContainer: LinearLayout
+    private lateinit var hideFromRecentsSwitch: Switch
     private var keepaliveExpanded = false
 
     /** 日志是否展开（默认收起，仅显示 5 行） */
@@ -97,6 +103,11 @@ class MainActivity : AppCompatActivity() {
         snapshotButtonSwitch = findViewById(R.id.snapshot_button_switch)
         volumeSnapshotSwitch = findViewById(R.id.volume_snapshot_switch)
         autoModeSwitch = findViewById(R.id.auto_mode_switch)
+        autoModeTileSwitch = findViewById(R.id.auto_mode_tile_switch)
+        autoModeVolumeSwitch = findViewById(R.id.auto_mode_volume_switch)
+        autoModeButtonSwitch = findViewById(R.id.auto_mode_button_switch)
+        autoModeSubContainer = findViewById(R.id.auto_mode_sub_container)
+        hideFromRecentsSwitch = findViewById(R.id.hide_from_recents_switch)
 
         // 载入持久化配置
         GkdHttpClient.load(this)
@@ -137,11 +148,43 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("volume_snapshot_enabled", checked).commit()
         }
         CapturePipeline.autoMode = prefs.getBoolean("auto_mode", true)
+        CapturePipeline.autoModeTile = prefs.getBoolean("auto_mode_tile", true)
+        CapturePipeline.autoModeVolume = prefs.getBoolean("auto_mode_volume", true)
+        CapturePipeline.autoModeButton = prefs.getBoolean("auto_mode_button", true)
         autoModeSwitch.isChecked = CapturePipeline.autoMode
+        autoModeTileSwitch.isChecked = CapturePipeline.autoModeTile
+        autoModeVolumeSwitch.isChecked = CapturePipeline.autoModeVolume
+        autoModeButtonSwitch.isChecked = CapturePipeline.autoModeButton
+        applyAutoModeSubVisibility()
         autoModeSwitch.setOnCheckedChangeListener { _, checked ->
             CapturePipeline.autoMode = checked
             prefs.edit().putBoolean("auto_mode", checked).commit()
+            if (checked) {
+                setAutoSub(true, true, true)
+            } else {
+                setAutoSub(false, false, false)
+            }
+            applyAutoModeSubVisibility()
         }
+        autoModeTileSwitch.setOnCheckedChangeListener { _, checked ->
+            CapturePipeline.autoModeTile = checked
+            prefs.edit().putBoolean("auto_mode_tile", checked).commit()
+        }
+        autoModeVolumeSwitch.setOnCheckedChangeListener { _, checked ->
+            CapturePipeline.autoModeVolume = checked
+            prefs.edit().putBoolean("auto_mode_volume", checked).commit()
+        }
+        autoModeButtonSwitch.setOnCheckedChangeListener { _, checked ->
+            CapturePipeline.autoModeButton = checked
+            prefs.edit().putBoolean("auto_mode_button", checked).commit()
+        }
+        // 隐藏后台卡片
+        hideFromRecentsSwitch.isChecked = prefs.getBoolean("hide_from_recents", false)
+        hideFromRecentsSwitch.setOnCheckedChangeListener { _, checked ->
+            prefs.edit().putBoolean("hide_from_recents", checked).commit()
+            applyHideFromRecents()
+        }
+        applyHideFromRecents()
         // 保活卡片（保持展开，不可折叠）
         findViewById<Button>(R.id.btn_keepalive_battery).setOnClickListener {
             openBatteryOptimizationSettings()
@@ -369,6 +412,27 @@ class MainActivity : AppCompatActivity() {
         }
         startActivity(Intent.createChooser(share, "分享日志"))
         AppLog.i("已导出日志文件: ${file.name}")
+    }
+
+    /** 根据总开关显示/隐藏自动模式子开关 */
+    private fun applyAutoModeSubVisibility() {
+        autoModeSubContainer.visibility = if (autoModeSwitch.isChecked) View.VISIBLE else View.GONE
+    }
+
+    /** 批量设置三个子开关（总开关切换时用），listener 会同步状态与持久化 */
+    private fun setAutoSub(tile: Boolean, volume: Boolean, button: Boolean) {
+        autoModeTileSwitch.isChecked = tile
+        autoModeVolumeSwitch.isChecked = volume
+        autoModeButtonSwitch.isChecked = button
+    }
+
+    /** 隐藏/显示后台卡片（最近任务） */
+    private fun applyHideFromRecents() {
+        val hide = prefs.getBoolean("hide_from_recents", false)
+        runCatching {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            am.appTasks.forEach { it.setExcludeFromRecents(hide) }
+        }
     }
 
     /** 引导用户把「捕获」磁贴手动添加到快捷中心 */
