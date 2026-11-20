@@ -28,6 +28,7 @@ import com.gkdbrain.app.history.HistoryEntry
 import com.gkdbrain.app.history.HistoryStore
 import com.gkdbrain.app.http.GkdHttpClient
 import com.gkdbrain.app.monitor.MonitorManager
+import com.gkdbrain.app.selector.AdFeatureStore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -57,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var keepaliveSwitch: Switch
     private lateinit var snapshotButtonSwitch: Switch
     private lateinit var volumeSnapshotSwitch: Switch
+    private lateinit var autoModeSwitch: Switch
     private var keepaliveExpanded = false
 
     /** 日志是否展开（默认收起，仅显示 5 行） */
@@ -94,10 +96,13 @@ class MainActivity : AppCompatActivity() {
         keepaliveSwitch = findViewById(R.id.keepalive_switch)
         snapshotButtonSwitch = findViewById(R.id.snapshot_button_switch)
         volumeSnapshotSwitch = findViewById(R.id.volume_snapshot_switch)
+        autoModeSwitch = findViewById(R.id.auto_mode_switch)
 
         // 载入持久化配置
         GkdHttpClient.load(this)
         HistoryStore.init(this)
+        LearningMode.load(this)
+        AdFeatureStore.init(this)
         val logEnabled = prefs.getBoolean("log_enabled", false)
         AppLog.enabled = logEnabled
         logSwitch.isChecked = logEnabled
@@ -112,7 +117,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_add_tile).setOnClickListener {
             requestAddTile()
         }
-        snapshotButtonSwitch.isChecked = SnapshotButtonManager.isShowing
+        snapshotButtonSwitch.isChecked = SnapshotButtonManager.isEnabled(this)
         snapshotButtonSwitch.setOnCheckedChangeListener { _, checked ->
             if (checked == SnapshotButtonManager.isShowing) return@setOnCheckedChangeListener
             if (checked) {
@@ -130,6 +135,12 @@ class MainActivity : AppCompatActivity() {
         volumeSnapshotSwitch.isChecked = prefs.getBoolean("volume_snapshot_enabled", false)
         volumeSnapshotSwitch.setOnCheckedChangeListener { _, checked ->
             prefs.edit().putBoolean("volume_snapshot_enabled", checked).commit()
+        }
+        CapturePipeline.autoMode = prefs.getBoolean("auto_mode", true)
+        autoModeSwitch.isChecked = CapturePipeline.autoMode
+        autoModeSwitch.setOnCheckedChangeListener { _, checked ->
+            CapturePipeline.autoMode = checked
+            prefs.edit().putBoolean("auto_mode", checked).commit()
         }
         // 保活卡片（保持展开，不可折叠）
         findViewById<Button>(R.id.btn_keepalive_battery).setOnClickListener {
@@ -251,7 +262,11 @@ class MainActivity : AppCompatActivity() {
         updateServiceStatus()
         updateKeepAliveStatus()
         startKeepAliveRefresh()
-        snapshotButtonSwitch.isChecked = SnapshotButtonManager.isShowing
+        snapshotButtonSwitch.isChecked = SnapshotButtonManager.isEnabled(this)
+        // 进程重启后按持久化状态恢复悬浮球
+        if (SnapshotButtonManager.isEnabled(this) && !SnapshotButtonManager.isShowing) {
+            SnapshotButtonManager.show(this)
+        }
     }
 
     override fun onPause() {

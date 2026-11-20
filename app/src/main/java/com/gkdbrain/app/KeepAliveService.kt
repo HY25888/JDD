@@ -61,8 +61,12 @@ class KeepAliveService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    /** 定时自检：无障碍断开且有 WRITE_SECURE_SETTINGS 时静默重开（10 秒一次，30 秒节流） */
+    /** 定时自检：恢复悬浮球 + 无障碍断开且有 WRITE_SECURE_SETTINGS 时静默重开（10 秒一次，30 秒节流） */
     private fun checkAccessibility() {
+        // 悬浮球开关开着但按钮不在（被系统回收）→ 恢复
+        if (SnapshotButtonManager.isEnabled(this) && !SnapshotButtonManager.isShowing) {
+            SnapshotButtonManager.show(this)
+        }
         if (GkdBrainAccessibilityService.instance != null) return
         if (!ShizukuHelper.hasWriteSecureSettings(this)) return
         val now = System.currentTimeMillis()

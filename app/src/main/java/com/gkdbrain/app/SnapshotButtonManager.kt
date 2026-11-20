@@ -31,6 +31,7 @@ object SnapshotButtonManager {
     private const val PREFS = "gkd_settings"
     private const val KEY_X = "snapshot_btn_x"
     private const val KEY_Y = "snapshot_btn_y"
+    private const val KEY_ENABLED = "snapshot_button_enabled"
     private const val LONG_PRESS_MS = 500L
 
     private var buttonView: TextView? = null
@@ -59,6 +60,10 @@ object SnapshotButtonManager {
     val isShowing: Boolean get() = buttonView != null
 
     fun hasPermission(context: Context): Boolean = Settings.canDrawOverlays(context)
+
+    /** 悬浮球开关是否开启（持久化，进程重启后据此恢复） */
+    fun isEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
 
     fun show(context: Context) {
         if (isShowing) return
@@ -139,6 +144,8 @@ object SnapshotButtonManager {
         buttonView = btn
         wm = manager
         appContext = app
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_ENABLED, true).apply()
         _isShowing.value = true
         AppLog.i("悬浮快照按钮已显示")
         // 开启悬浮球时顺带静默开启无障碍（与磁贴一致）
@@ -155,6 +162,8 @@ object SnapshotButtonManager {
     fun hide() {
         if (buttonView == null) return
         savePosition()
+        appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            ?.edit()?.putBoolean(KEY_ENABLED, false)?.apply()
         buttonView?.let { wm?.removeView(it) }
         buttonView = null
         wm = null

@@ -40,6 +40,14 @@ class HistoryActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_back).setOnClickListener { finish() }
         findViewById<Button>(R.id.btn_clear_history).setOnClickListener { confirmClear() }
 
+        // 学习模式开关
+        LearningMode.load(this)
+        val learnSwitch = findViewById<Switch>(R.id.learn_mode_switch)
+        learnSwitch.isChecked = LearningMode.enabled
+        learnSwitch.setOnCheckedChangeListener { _, checked ->
+            LearningMode.set(this, checked)
+        }
+
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 HistoryStore.entries.collect { render() }

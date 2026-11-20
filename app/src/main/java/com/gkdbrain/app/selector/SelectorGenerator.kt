@@ -61,7 +61,21 @@ object SelectorGenerator {
             return generateVidOnly(target, nodes, byId)
         }
 
-        // 1. 唯一 vid（优先：vid 稳定且精准）
+        // 1. 关系选择器（优先：带祖先容器 vid 限定，用「空格=任意祖先」而非「> =直接父」，避免隔层匹配不到）
+        val ancestorVid = findAncestorVidIn(byId, target)
+        if (ancestorVid != null) {
+            val targetQualifier = basicQualifier(target)
+            if (targetQualifier != null) {
+                return SelectorResult.Success(
+                    "[vid=${escape(ancestorVid)}] $targetQualifier",
+                    SelectorKind.RELATION,
+                    target,
+                    "祖先容器 vid 限定，带上下文避免误点普通组件",
+                )
+            }
+        }
+
+        // 2. 唯一 vid（无祖先容器时的兜底）
         target.attr.vid?.takeIf { it.isNotBlank() }?.let { vid ->
             if (nodes.count { it.attr.vid == vid } == 1) {
                 return SelectorResult.Success(
@@ -71,25 +85,6 @@ object SelectorGenerator {
                     "vid 在全树唯一",
                 )
             }
-        }
-
-        // 2. 关系选择器（向上找有 vid 的祖先容器，用其 vid 限定，区分同文本不同容器）
-        var ancestor = byId[target.pid]
-        while (ancestor != null && ancestor.id != target.id) {
-            val ancestorVid = ancestor.attr.vid?.takeIf { it.isNotBlank() }
-            if (ancestorVid != null) {
-                val targetQualifier = basicQualifier(target)
-                if (targetQualifier != null) {
-                    return SelectorResult.Success(
-                        "[vid=${escape(ancestorVid)}] > $targetQualifier",
-                        SelectorKind.RELATION,
-                        target,
-                        "祖先节点 vid 限定，区分同文本不同容器",
-                    )
-                }
-                break
-            }
-            ancestor = byId[ancestor.pid]
         }
 
         // 3. 唯一文本（倒计时文本用前缀匹配，普通文本用精确匹配）
@@ -140,32 +135,28 @@ object SelectorGenerator {
         nodes: List<SnapshotNode>,
         byId: Map<Int, SnapshotNode>,
     ): SelectorResult {
+        val targetVid = target.attr.vid?.takeIf { it.isNotBlank() }
+            ?: return SelectorResult.Failure("source null 且无可用 vid")
         // 1. 唯一 vid
-        target.attr.vid?.takeIf { it.isNotBlank() }?.let { vid ->
-            if (nodes.count { it.attr.vid == vid } == 1) {
-                return SelectorResult.Success(
-                    "[vid=${escape(vid)}]",
-                    SelectorKind.UNIQUE_VID,
-                    target,
-                    "vid 在全树唯一",
-                )
-            }
+        if (nodes.count { it.attr.vid == targetVid } == 1) {
+            return SelectorResult.Success(
+                "[vid=${escape(targetVid)}]",
+                SelectorKind.UNIQUE_VID,
+                target,
+                "vid 在全树唯一",
+            )
         }
-        // 2. 关系选择器：祖先 vid + 目标 vid
+        // 2. 关系选择器：祖先 vid + 目标 vid（空格=任意祖先，跳过与目标同名的祖先，避免自引用）
         var ancestor = byId[target.pid]
         while (ancestor != null && ancestor.id != target.id) {
             val ancestorVid = ancestor.attr.vid?.takeIf { it.isNotBlank() }
-            if (ancestorVid != null) {
-                val targetVid = target.attr.vid?.takeIf { it.isNotBlank() }
-                if (targetVid != null) {
-                    return SelectorResult.Success(
-                        "[vid=${escape(ancestorVid)}] > [vid=${escape(targetVid)}]",
-                        SelectorKind.RELATION,
-                        target,
-                        "祖先 vid + 目标 vid 限定",
-                    )
-                }
-                break
+            if (ancestorVid != null && ancestorVid != targetVid) {
+                return SelectorResult.Success(
+                    "[vid=${escape(ancestorVid)}] [vid=${escape(targetVid)}]",
+                    SelectorKind.RELATION,
+                    target,
+                    "祖先 vid + 目标 vid 限定",
+                )
             }
             ancestor = byId[ancestor.pid]
         }
@@ -188,9 +179,14 @@ object SelectorGenerator {
         return text.replace(Regex("\\s*\\d+\\s*$"), "").trim().ifBlank { null }
     }
 
-    /** 目标节点的最优先单属性限定：text → desc → vid → className */
+    /** 目标节点的最优先单属性限定：text（倒计时转包含匹配）→ desc → vid → className */
     private fun basicQualifier(node: SnapshotNode): String? {
-        node.attr.text?.takeIf { it.isNotBlank() }?.let { return "[text=${escape(it)}]" }
+        val rawText = node.attr.text
+        val stripped = stripCountdown(rawText)
+        if (stripped != null) {
+            val isCountdown = rawText != null && rawText != stripped
+            return if (isCountdown) "[text*=${escape(stripped)}]" else "[text=${escape(stripped)}]"
+        }
         node.attr.desc?.takeIf { it.isNotBlank() }?.let { return "[desc=${escape(it)}]" }
         node.attr.vid?.takeIf { it.isNotBlank() }?.let { return "[vid=${escape(it)}]" }
         node.attr.name?.takeIf { it.isNotBlank() }?.let { return "@$it" }
@@ -203,6 +199,22 @@ object SelectorGenerator {
         node.attr.name?.takeIf { it.isNotBlank() }?.let { return "@$it" }
         return null
     }
+
+    /** 向上找最近「有意义」的祖先容器 vid（不含自身，且不等于目标自身 vid，避免自引用），无则返回 null */
+    private fun findAncestorVidIn(byId: Map<Int, SnapshotNode>, node: SnapshotNode): String? {
+        val selfVid = node.attr.vid
+        var ancestor = byId[node.pid]
+        while (ancestor != null && ancestor.id != node.id) {
+            val vid = ancestor.attr.vid?.takeIf { it.isNotBlank() }
+            if (vid != null && vid != selfVid) return vid
+            ancestor = byId[ancestor.pid]
+        }
+        return null
+    }
+
+    /** 供外部（CapturePipeline）提取「广告容器 vid」，用于按 App 记住特征 */
+    fun findAncestorVid(nodes: List<SnapshotNode>, node: SnapshotNode): String? =
+        findAncestorVidIn(nodes.associateBy { it.id }, node)
 
     /** 向上找最近可点击节点（含自身）；若整条祖先链都不可点击则返回原节点 */
     private fun resolveClickable(

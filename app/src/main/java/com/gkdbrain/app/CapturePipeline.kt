@@ -11,9 +11,11 @@ import com.gkdbrain.app.locate.NodeMatchResult
 import com.gkdbrain.app.locate.ScreenParams
 import com.gkdbrain.app.model.CapturedNode
 import com.gkdbrain.app.monitor.MonitorManager
+import com.gkdbrain.app.selector.AdFeatureStore
 import com.gkdbrain.app.selector.SelectorGenerator
 import com.gkdbrain.app.selector.SelectorResult
 import com.gkdbrain.app.snapshot.GkdSnapshot
+import com.gkdbrain.app.snapshot.SnapshotNode
 import com.gkdbrain.app.subscription.RuleJsonBuilder
 import android.accessibilityservice.AccessibilityService
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +41,10 @@ object CapturePipeline {
     var isCapturing = false
         private set
 
+    /** 自动模式：激活快照后不等待手动点击，自动查找关闭/跳过按钮生成规则 */
+    @Volatile
+    var autoMode = false
+
     /** 最近一次激活等待点击的时间戳，用于 cancelWaiting 的时间保护 */
     @Volatile
     private var lastActivateTime = 0L
@@ -61,16 +67,22 @@ object CapturePipeline {
                 }
                 is GkdHttpResult.Success -> {
                     pendingSnapshot = r.value
-                    ClickCaptureManager.setWaitingForClick(true)
-                    lastActivateTime = System.currentTimeMillis()
-                    AppLog.i("★ 已激活：快照已抓取（${r.value.nodes.size} 节点），6 秒内点击目标控件")
-                    // 6 秒超时：超时或用户返回/上滑（没点）即放弃
-                    delay(9000)
-                    if (ClickCaptureManager.waitingForClick.value) {
-                        pendingSnapshot = null
-                        ClickCaptureManager.setWaitingForClick(false)
-                        AppLog.w("等待点击超时（6 秒），已放弃")
+                    if (autoMode) {
+                        AppLog.i("★ 已激活（自动模式）：快照已抓取（${r.value.nodes.size} 节点），自动查找关闭按钮")
+                        autoExecute(r.value)
                         isCapturing = false
+                    } else {
+                        ClickCaptureManager.setWaitingForClick(true)
+                        lastActivateTime = System.currentTimeMillis()
+                        AppLog.i("★ 已激活：快照已抓取（${r.value.nodes.size} 节点），6 秒内点击目标控件")
+                        // 6 秒超时：超时或用户返回/上滑（没点）即放弃
+                        delay(9000)
+                        if (ClickCaptureManager.waitingForClick.value) {
+                            pendingSnapshot = null
+                            ClickCaptureManager.setWaitingForClick(false)
+                            AppLog.w("等待点击超时（6 秒），已放弃")
+                            isCapturing = false
+                        }
                     }
                 }
             }
@@ -91,15 +103,21 @@ object CapturePipeline {
                 }
                 is GkdHttpResult.Success -> {
                     pendingSnapshot = result.value
-                    ClickCaptureManager.setWaitingForClick(true)
-                    lastActivateTime = System.currentTimeMillis()
-                    AppLog.i("★ 已激活（悬浮按钮）：快照已抓取（${result.value.nodes.size} 节点），6 秒内点击目标控件")
-                    delay(9000)
-                    if (ClickCaptureManager.waitingForClick.value) {
-                        pendingSnapshot = null
-                        ClickCaptureManager.setWaitingForClick(false)
-                        AppLog.w("等待点击超时（6 秒），已放弃")
+                    if (autoMode) {
+                        AppLog.i("★ 已激活（自动模式）：快照已抓取（${result.value.nodes.size} 节点），自动查找关闭按钮")
+                        autoExecute(result.value)
                         isCapturing = false
+                    } else {
+                        ClickCaptureManager.setWaitingForClick(true)
+                        lastActivateTime = System.currentTimeMillis()
+                        AppLog.i("★ 已激活（悬浮按钮）：快照已抓取（${result.value.nodes.size} 节点），6 秒内点击目标控件")
+                        delay(9000)
+                        if (ClickCaptureManager.waitingForClick.value) {
+                            pendingSnapshot = null
+                            ClickCaptureManager.setWaitingForClick(false)
+                            AppLog.w("等待点击超时（6 秒），已放弃")
+                            isCapturing = false
+                        }
                     }
                 }
             }
@@ -115,6 +133,31 @@ object CapturePipeline {
         ClickCaptureManager.setWaitingForClick(false)
         isCapturing = false
         AppLog.w("已取消等待点击")
+    }
+
+    /**
+     * 手动模式兜底：点击事件拿不到任何信息（source null 且无 text）时，
+     * 不放弃，直接用预抓/补抓的快照扫节点树自动查找关闭按钮。
+     */
+    fun fallbackToAuto() {
+        scope.launch {
+            AppLog.i("手动模式兜底：点击事件无信息，转自动查找关闭按钮")
+            val snapshot = pendingSnapshot ?: run {
+                AppLog.i("无预抓快照，兜底补抓…")
+                when (val r = GkdHttpClient.captureSnapshot()) {
+                    is GkdHttpResult.Failure -> {
+                        AppLog.e("兜底快照捕获失败: ${r.reason}")
+                        isCapturing = false
+                        return@launch
+                    }
+                    is GkdHttpResult.Success -> r.value
+                }
+            }
+            pendingSnapshot = null
+            ClickCaptureManager.setWaitingForClick(false)
+            autoExecute(snapshot)
+            isCapturing = false
+        }
     }
 
     /** 等下拉面板收起、目标 App 回到前台（当前窗口不再是系统 UI 包），最多 [timeoutMs] */
@@ -184,7 +227,8 @@ object CapturePipeline {
         AppLog.i("步骤2/4 反查节点…")
         val locate = locateNode(captured, screen, snapshot)
         if (locate == null) {
-            AppLog.e("反查失败")
+            AppLog.w("手动反查失败，转入自动查找关闭按钮")
+            autoExecute(snapshot)
             return
         }
         AppLog.i("命中节点 id=${locate.node.id} 方式=${locate.matchType} " +
@@ -200,34 +244,151 @@ object CapturePipeline {
             is SelectorResult.Success -> r
         }
         AppLog.i("选择器: ${selector.selector} (${selector.kind})")
+        rememberFeature(snapshot, selector.targetNode)
 
-        // 套规则（首次 = 连续点击：actionCd 0.5s 冷却，不限次数）+ 写入 + 记录历史
-        val groupName = "自动 - ${captured.text ?: selector.selector}"
-        val group = RuleJsonBuilder.buildGroup(
-            groupName = groupName,
-            matches = selector.selector,
-            actionCdMs = 500L,
-        )
-        AppLog.i("步骤4/4 写入 GKD 本地订阅（连续点击：0.5s 冷却）…")
-        when (val r = GkdHttpClient.writeRule(appId = snapshot.appId, group = group)) {
-            is GkdHttpResult.Failure -> AppLog.e("写入失败: ${r.reason}")
-            is GkdHttpResult.Success -> {
-                AppLog.i("★ 规则已写入 GKD: ${snapshot.appId} → $groupName (key=${r.value})")
-                val now = System.currentTimeMillis()
-                val entry = HistoryStore.add(
-                    HistoryEntry(
-                        id = now,
-                        appId = snapshot.appId,
-                        selector = selector.selector,
-                        groupName = groupName,
-                        groupKey = r.value,
-                        state = LearnState.PENDING,
-                        createdAt = now,
-                    ),
-                )
-                AppLog.i("已加入历史记录，自动进入监控")
-                MonitorManager.startMonitoring(entry)
+        // 套规则（学习模式 = 连续点击 + 学习；否则一次性点击不学习）+ 写入 + 记录历史
+        writeRule(snapshot, selector.selector, captured.text ?: selector.selector)
+    }
+
+    /** 自动模式：在快照里查找关闭/跳过按钮并生成规则 */
+    private suspend fun autoExecute(snapshot: GkdSnapshot) {
+        val node = autoLocateClose(snapshot)
+        if (node == null) {
+            AppLog.e("自动查找失败：无 clickable 节点")
+            return
+        }
+        AppLog.i("自动命中节点 id=${node.id} vid=${node.attr.vid} " +
+            "name=${node.attr.name} area=${node.attr.area}")
+
+        val selector = when (val r = SelectorGenerator.generate(snapshot, node)) {
+            is SelectorResult.Failure -> {
+                AppLog.e("选择器生成失败: ${r.reason}")
+                return
             }
+            is SelectorResult.Success -> r
+        }
+        AppLog.i("选择器: ${selector.selector} (${selector.kind})")
+        rememberFeature(snapshot, selector.targetNode)
+        writeRule(snapshot, selector.selector, node.attr.vid ?: selector.selector)
+    }
+
+    /** 按 App 记住「广告容器 vid + 关闭按钮 vid」特征，用于后续生成带上下文选择器 */
+    private fun rememberFeature(snapshot: GkdSnapshot, node: SnapshotNode) {
+        val containerVid = SelectorGenerator.findAncestorVid(snapshot.nodes, node)
+        AdFeatureStore.remember(snapshot.appId, containerVid, node.attr.vid)
+        AppLog.i("记住广告特征: ${snapshot.appId} 容器=${containerVid ?: "无"} 关闭按钮=${node.attr.vid ?: "无"}")
+    }
+
+    /**
+     * 在快照里自动查找广告的「关闭/跳过」按钮：
+     * 优先取 clickable 且 vid/id 含关键词（close/exit/skip/cancel/关闭/跳过/知道了）的节点，
+     * 命中多个取面积最小（关闭按钮通常是小图标）；无关键词时退化为所有 clickable 里面积最小的。
+     */
+    private fun autoLocateClose(snapshot: GkdSnapshot): com.gkdbrain.app.snapshot.SnapshotNode? {
+        val clickable = snapshot.nodes.filter { it.attr.clickable }
+        if (clickable.isEmpty()) return null
+        val keywords = listOf("close", "exit", "skip", "cancel", "关闭", "跳过", "知道了", "跳过广告")
+        val matched = clickable.filter { n ->
+            val id = n.attr.id.orEmpty()
+            val vid = n.attr.vid.orEmpty()
+            keywords.any { k -> id.contains(k, ignoreCase = true) || vid.contains(k, ignoreCase = true) }
+        }
+        val candidates = if (matched.isNotEmpty()) matched else clickable
+        return candidates.minByOrNull { it.attr.area }
+    }
+
+    /** 套规则并写入 GKD 本地订阅；同名更新（replace），否则新增（append），name 冲突时加 -1 后缀重试 */
+    private suspend fun writeRule(snapshot: GkdSnapshot, selectorStr: String, label: String) {
+        val baseName = "自动 - $label"
+        val learn = LearningMode.enabled
+
+        val existing = HistoryStore.findByGroupName(snapshot.appId, baseName)
+        if (existing != null) {
+            AppLog.i(
+                if (learn) "更新 GKD 同名规则组（连续点击：0.5s 冷却，学习模式）…"
+                else "更新 GKD 同名规则组（一次性点击，不学习）…",
+            )
+            val group = buildGroup(baseName, selectorStr, learn)
+            when (val r = GkdHttpClient.replaceRuleGroup(snapshot.appId, existing.groupKey, group)) {
+                is GkdHttpResult.Failure ->
+                    AppLog.e("更新失败: ${r.reason}，改为新增规则")
+                is GkdHttpResult.Success -> {
+                    AppLog.i("★ 规则已更新 GKD: ${snapshot.appId} → $baseName (key=${existing.groupKey})")
+                    val entry = existing.copy(
+                        selector = selectorStr,
+                        state = if (learn) LearnState.PENDING else LearnState.CLICK_ONCE,
+                        delayMs = null,
+                    )
+                    HistoryStore.update(entry)
+                    afterWrite(entry, learn, "已更新历史记录")
+                    return
+                }
+            }
+        }
+
+        // 新增（append）；name 冲突时加 -1/-2… 后缀重试
+        var groupName = baseName
+        var suffix = 0
+        while (true) {
+            val group = buildGroup(groupName, selectorStr, learn)
+            AppLog.i(
+                if (learn) "写入 GKD 本地订阅（连续点击：0.5s 冷却，学习模式）…"
+                else "写入 GKD 本地订阅（一次性点击，不学习）…",
+            )
+            when (val r = GkdHttpClient.writeRule(appId = snapshot.appId, group = group)) {
+                is GkdHttpResult.Failure -> {
+                    if (isNameDuplicate(r.reason)) {
+                        suffix++
+                        groupName = "$baseName-$suffix"
+                        AppLog.w("同名规则已存在，改用「$groupName」重试")
+                        continue
+                    }
+                    AppLog.e("写入失败: ${r.reason}")
+                    return
+                }
+                is GkdHttpResult.Success -> {
+                    AppLog.i("★ 规则已写入 GKD: ${snapshot.appId} → $groupName (key=${r.value})")
+                    val now = System.currentTimeMillis()
+                    val entry = HistoryStore.add(
+                        HistoryEntry(
+                            id = now,
+                            appId = snapshot.appId,
+                            selector = selectorStr,
+                            groupName = groupName,
+                            groupKey = r.value,
+                            state = if (learn) LearnState.PENDING else LearnState.CLICK_ONCE,
+                            createdAt = now,
+                        ),
+                    )
+                    afterWrite(entry, learn, "已加入历史记录")
+                    return
+                }
+            }
+        }
+    }
+
+    private fun buildGroup(groupName: String, selectorStr: String, learn: Boolean) =
+        if (learn) {
+            RuleJsonBuilder.buildGroup(
+                groupName = groupName,
+                matches = selectorStr,
+                actionCdMs = 500L,
+            )
+        } else {
+            RuleJsonBuilder.buildGroup(groupName = groupName, matches = selectorStr)
+        }
+
+    private fun isNameDuplicate(reason: String): Boolean =
+        reason.contains("RuleNameDuplicate", ignoreCase = true) ||
+            reason.contains("同名", ignoreCase = true)
+
+    /** 写入/更新成功后：学习模式下进入监控，否则仅记录 */
+    private fun afterWrite(entry: HistoryEntry, learn: Boolean, msg: String) {
+        if (learn) {
+            AppLog.i("$msg，自动进入监控")
+            MonitorManager.startMonitoring(entry)
+        } else {
+            AppLog.i("$msg（一次性点击，不学习）")
         }
     }
 }

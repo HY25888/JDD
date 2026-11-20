@@ -303,6 +303,27 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
 
+        <!-- 自动/手动模式切换 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="自动模式（激活后自动查找关闭/跳过按钮并生成规则，无需手动点击）"
+                android:textSize="14sp" />
+
+            <Switch
+                android:id="@+id/auto_mode_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
         <!-- 历史记录（文件夹入口卡片，点击进入独立空间查看全部） -->
         <TextView
             android:layout_width="wrap_content"

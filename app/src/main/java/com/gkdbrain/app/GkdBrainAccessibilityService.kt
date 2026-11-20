@@ -20,6 +20,7 @@ import com.gkdbrain.app.model.CapturedNode
 import com.gkdbrain.app.monitor.HistoryTracker
 import com.gkdbrain.app.monitor.MonitorManager
 import com.gkdbrain.app.monitor.SelectorMatcher
+import com.gkdbrain.app.selector.AdFeatureStore
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -142,7 +143,12 @@ class GkdBrainAccessibilityService : AccessibilityService() {
             // source 为 null：用事件残留的 text/class 构造节点，走 text 反查（无坐标）
             val text = event.text?.firstOrNull()?.toString()?.trim()
             if (text.isNullOrEmpty()) {
-                AppLog.w("点击事件没有 source 且无 text，pkg=$pkg class=${event.className}")
+                if (ClickCaptureManager.waitingForClick.value) {
+                    AppLog.w("点击事件没有 source 且无 text，转自动查找关闭按钮")
+                    CapturePipeline.fallbackToAuto()
+                } else {
+                    AppLog.w("点击事件没有 source 且无 text，pkg=$pkg class=${event.className}")
+                }
                 return
             }
             val node = CapturedNode(
@@ -252,6 +258,8 @@ class GkdBrainAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         HistoryStore.init(applicationContext)
+        LearningMode.load(applicationContext)
+        AdFeatureStore.init(applicationContext)
         _connected.value = true
         AppLog.i("无障碍服务已连接")
     }
