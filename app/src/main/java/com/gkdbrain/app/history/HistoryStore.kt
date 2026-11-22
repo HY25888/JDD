@@ -81,10 +81,6 @@ object HistoryStore {
 
     fun get(id: Long): HistoryEntry? = _entries.value.find { it.id == id }
 
-    /** 按 appId + 规则组名查找（用于「同名规则更新而非追加」） */
-    fun findByGroupName(appId: String, groupName: String): HistoryEntry? =
-        _entries.value.find { it.appId == appId && it.groupName == groupName }
-
     private fun persist() {
         prefs?.edit()?.putString(KEY, json.encodeToString(_entries.value))?.apply()
     }

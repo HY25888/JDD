@@ -267,19 +267,35 @@ object CapturePipeline {
         rememberFeature(snapshot, selector.targetNode)
 
         // 套规则（学习模式 = 连续点击 + 学习；否则一次性点击不学习）+ 写入 + 记录历史
-        writeRule(snapshot, selector.selector, captured.text ?: selector.selector)
+        writeRule(snapshot, selector.selector, captured.text ?: selector.selector, "手动")
     }
 
-    /** 自动模式：在快照里查找关闭/跳过按钮并生成规则 */
+    /** 自动模式：优先用增强版快照（多窗口）查找关闭按钮，回退 GKD 快照 */
     private suspend fun autoExecute(snapshot: GkdSnapshot) {
+        val enhancedSnapshot = captureEnhanced()
+            ?.takeIf { it.nodes.isNotEmpty() }
+            ?.let { GkdSnapshot(appId = it.appId, nodes = it.nodes) }
+        if (enhancedSnapshot != null) {
+            val node = autoLocateClose(enhancedSnapshot)
+            if (node != null) {
+                AppLog.i("增强版快照命中关闭按钮（多窗口 ${enhancedSnapshot.nodes.size} 节点）")
+                generateAndWrite(enhancedSnapshot, node)
+                return
+            }
+            AppLog.w("增强版快照未找到关闭按钮，回退 GKD 快照")
+        }
         val node = autoLocateClose(snapshot)
         if (node == null) {
-            AppLog.e("自动查找失败：无 clickable 节点")
+            AppLog.e("自动查找失败：未找到关闭按钮")
             return
         }
+        generateAndWrite(snapshot, node)
+    }
+
+    /** 生成选择器并写入规则（自动模式） */
+    private suspend fun generateAndWrite(snapshot: GkdSnapshot, node: SnapshotNode) {
         AppLog.i("自动命中节点 id=${node.id} vid=${node.attr.vid} " +
             "name=${node.attr.name} area=${node.attr.area}")
-
         val selector = when (val r = SelectorGenerator.generate(snapshot, node)) {
             is SelectorResult.Failure -> {
                 AppLog.e("选择器生成失败: ${r.reason}")
@@ -299,90 +315,95 @@ object CapturePipeline {
         AppLog.i("记住广告特征: ${snapshot.appId} 容器=${containerVid ?: "无"} 关闭按钮=${node.attr.vid ?: "无"}")
     }
 
+    /** 抓取增强版快照（九宫格多窗口扫描）并保存记录，返回快照供规则生成复用 */
+    private fun captureEnhanced(): SnapshotCapture.EnhancedSnapshot? {
+        val service = GkdBrainAccessibilityService.instance ?: return null
+        val snap = SnapshotCapture.capture(service) ?: return null
+        SnapshotRecordStore.save(snap.appId, snap.nodes)
+        AppLog.i("已保存增强版快照: ${snap.appId} 节点=${snap.nodes.size}")
+        return snap
+    }
+
     /**
      * 在快照里自动查找广告的「关闭/跳过」按钮：
-     * 优先取 clickable 且 vid/id 含关键词（close/exit/skip/cancel/关闭/跳过/知道了）的节点，
-     * 命中多个取面积最小（关闭按钮通常是小图标）；无关键词时退化为所有 clickable 里面积最小的。
+     * 只取 clickable 且 vid/id/text/desc 含关键词（close/exit/skip/cancel/关闭/跳过/知道了）的节点
+     * （WebView 里的关闭 × 往往只有 desc/text 没有 vid），命中多个取面积最小（关闭按钮通常是小图标）。
+     * 无关键词命中时返回 null（不写规则，避免误点普通组件）。
      */
     private fun autoLocateClose(snapshot: GkdSnapshot): com.gkdbrain.app.snapshot.SnapshotNode? {
-        val clickable = snapshot.nodes.filter { it.attr.clickable }
+        val clickable = snapshot.nodes.filter { it.attr.clickable && it.attr.area > 0 }
         if (clickable.isEmpty()) return null
         val keywords = listOf("close", "exit", "skip", "cancel", "关闭", "跳过", "知道了", "跳过广告")
         val matched = clickable.filter { n ->
             val id = n.attr.id.orEmpty()
             val vid = n.attr.vid.orEmpty()
-            keywords.any { k -> id.contains(k, ignoreCase = true) || vid.contains(k, ignoreCase = true) }
-        }
-        val candidates = if (matched.isNotEmpty()) matched else clickable
-        return candidates.minByOrNull { it.attr.area }
-    }
-
-    /** 套规则并写入 GKD 本地订阅；同名更新（replace），否则新增（append），name 冲突时加 -1 后缀重试 */
-    private suspend fun writeRule(snapshot: GkdSnapshot, selectorStr: String, label: String) {
-        val baseName = "自动 - $label"
-        val learn = LearningMode.enabled
-
-        val existing = HistoryStore.findByGroupName(snapshot.appId, baseName)
-        if (existing != null) {
-            AppLog.i(
-                if (learn) "更新 GKD 同名规则组（连续点击：0.5s 冷却，学习模式）…"
-                else "更新 GKD 同名规则组（一次性点击，不学习）…",
-            )
-            val group = buildGroup(baseName, selectorStr, learn)
-            when (val r = GkdHttpClient.replaceRuleGroup(snapshot.appId, existing.groupKey, group)) {
-                is GkdHttpResult.Failure ->
-                    AppLog.e("更新失败: ${r.reason}，改为新增规则")
-                is GkdHttpResult.Success -> {
-                    AppLog.i("★ 规则已更新 GKD: ${snapshot.appId} → $baseName (key=${existing.groupKey})")
-                    val entry = existing.copy(
-                        selector = selectorStr,
-                        state = if (learn) LearnState.PENDING else LearnState.CLICK_ONCE,
-                        delayMs = null,
-                    )
-                    HistoryStore.update(entry)
-                    afterWrite(entry, learn, "已更新历史记录")
-                    return
-                }
+            val text = n.attr.text.orEmpty()
+            val desc = n.attr.desc.orEmpty()
+            keywords.any { k ->
+                id.contains(k, ignoreCase = true) || vid.contains(k, ignoreCase = true) ||
+                    text.contains(k, ignoreCase = true) || desc.contains(k, ignoreCase = true)
             }
         }
+        if (matched.isEmpty()) {
+            AppLog.w("未找到含关闭关键词的可点击节点，跳过（避免误点普通组件）")
+            return null
+        }
+        return matched.minByOrNull { it.attr.area }
+    }
 
-        // 新增（append）；name 冲突时加 -1/-2… 后缀重试
-        var groupName = baseName
-        var suffix = 0
-        while (true) {
-            val group = buildGroup(groupName, selectorStr, learn)
-            AppLog.i(
-                if (learn) "写入 GKD 本地订阅（连续点击：0.5s 冷却，学习模式）…"
-                else "写入 GKD 本地订阅（一次性点击，不学习）…",
-            )
-            when (val r = GkdHttpClient.writeRule(appId = snapshot.appId, group = group)) {
-                is GkdHttpResult.Failure -> {
-                    if (isNameDuplicate(r.reason)) {
-                        suffix++
-                        groupName = "$baseName-$suffix"
-                        AppLog.w("同名规则已存在，改用「$groupName」重试")
-                        continue
-                    }
-                    AppLog.e("写入失败: ${r.reason}")
-                    return
-                }
-                is GkdHttpResult.Success -> {
-                    AppLog.i("★ 规则已写入 GKD: ${snapshot.appId} → $groupName (key=${r.value})")
-                    val now = System.currentTimeMillis()
-                    val entry = HistoryStore.add(
-                        HistoryEntry(
-                            id = now,
-                            appId = snapshot.appId,
-                            selector = selectorStr,
-                            groupName = groupName,
-                            groupKey = r.value,
-                            state = if (learn) LearnState.PENDING else LearnState.CLICK_ONCE,
-                            createdAt = now,
-                        ),
-                    )
-                    afterWrite(entry, learn, "已加入历史记录")
-                    return
-                }
+    /**
+     * 套规则并写入 GKD 本地订阅。
+     * 简化策略：先用原名 append；失败（名字冲突或其它错误）在名字后加「-1」再 append 一次；
+     * 若 -1 仍失败则结束，不再重试、也不替换旧规则。
+     */
+    private suspend fun writeRule(
+        snapshot: GkdSnapshot,
+        selectorStr: String,
+        label: String,
+        prefix: String = "自动",
+    ) {
+        val baseName = "$prefix - ${snapshot.appId} - $label"
+        val learn = LearningMode.enabled
+
+        if (tryAppend(snapshot.appId, baseName, selectorStr, learn)) return
+        AppLog.w("「$baseName」写入失败，改用「$baseName-1」重试")
+        if (tryAppend(snapshot.appId, "$baseName-1", selectorStr, learn)) return
+        AppLog.e("「$baseName-1」仍写入失败，本次不写入 GKD 规则")
+    }
+
+    /** 单次 append：成功则记录历史并返回 true；失败记录原因并返回 false */
+    private suspend fun tryAppend(
+        appId: String,
+        groupName: String,
+        selectorStr: String,
+        learn: Boolean,
+    ): Boolean {
+        val group = buildGroup(groupName, selectorStr, learn)
+        AppLog.i(
+            if (learn) "写入 GKD「$groupName」（连续点击 0.5s 冷却，学习模式）…"
+            else "写入 GKD「$groupName」（一次性点击，不学习）…",
+        )
+        return when (val r = GkdHttpClient.writeRule(appId = appId, group = group)) {
+            is GkdHttpResult.Failure -> {
+                AppLog.w("写入失败: ${r.reason}")
+                false
+            }
+            is GkdHttpResult.Success -> {
+                AppLog.i("★ 规则已写入 GKD: $appId → $groupName (key=${r.value})")
+                val now = System.currentTimeMillis()
+                val entry = HistoryStore.add(
+                    HistoryEntry(
+                        id = now,
+                        appId = appId,
+                        selector = selectorStr,
+                        groupName = groupName,
+                        groupKey = r.value,
+                        state = if (learn) LearnState.PENDING else LearnState.CLICK_ONCE,
+                        createdAt = now,
+                    ),
+                )
+                afterWrite(entry, learn, "已加入历史记录")
+                true
             }
         }
     }
@@ -398,11 +419,7 @@ object CapturePipeline {
             RuleJsonBuilder.buildGroup(groupName = groupName, matches = selectorStr)
         }
 
-    private fun isNameDuplicate(reason: String): Boolean =
-        reason.contains("RuleNameDuplicate", ignoreCase = true) ||
-            reason.contains("同名", ignoreCase = true)
-
-    /** 写入/更新成功后：学习模式下进入监控，否则仅记录 */
+    /** 写入成功后：学习模式下进入监控，否则仅记录 */
     private fun afterWrite(entry: HistoryEntry, learn: Boolean, msg: String) {
         if (learn) {
             AppLog.i("$msg，自动进入监控")

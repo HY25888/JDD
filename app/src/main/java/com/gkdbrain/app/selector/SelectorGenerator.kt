@@ -173,10 +173,13 @@ object SelectorGenerator {
         return if (nodes.count { selector(it.attr) == value } == 1) value else null
     }
 
-    /** 去掉文本末尾的倒计时数字（如「退出 3」→「退出」、「跳过5」→「跳过」） */
+    /** 倒计时数字片段（可带括号/单位 s、秒、秒钟，前后允许空白），用于从文本里剥掉倒计时数字 */
+    private val COUNTDOWN_DIGIT = Regex("""\s*[(（]?\d+\s*(?:s|秒|秒钟)?[)）]?\s*""")
+
+    /** 去掉文本中的倒计时数字（如「跳过 3」「3 跳过」「跳过(3)」「跳过 3s」→「跳过」） */
     private fun stripCountdown(text: String?): String? {
         if (text == null) return null
-        return text.replace(Regex("\\s*\\d+\\s*$"), "").trim().ifBlank { null }
+        return text.replace(COUNTDOWN_DIGIT, "").trim().ifBlank { null }
     }
 
     /** 目标节点的最优先单属性限定：text（倒计时转包含匹配）→ desc → vid → className */

@@ -49,6 +49,11 @@
             android:name=".HistoryActivity"
             android:exported="false" />
 
+        <!-- 快照记录空间 -->
+        <activity
+            android:name=".SnapshotRecordActivity"
+            android:exported="false" />
+
         <!-- 关于页面 -->
         <activity
             android:name=".AboutActivity"

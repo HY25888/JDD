@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var capturedInfoText: TextView
     private lateinit var logText: TextView
     private lateinit var logScroll: ScrollView
+    private lateinit var logNavContainer: LinearLayout
     private lateinit var logSwitch: Switch
     private lateinit var btnToggleLog: Button
     private lateinit var editHost: EditText
@@ -60,12 +61,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var snapshotButtonSwitch: Switch
     private lateinit var volumeSnapshotSwitch: Switch
     private lateinit var autoModeSwitch: Switch
+    private lateinit var manualModeSwitch: Switch
     private lateinit var autoModeTileSwitch: Switch
     private lateinit var autoModeVolumeSwitch: Switch
     private lateinit var autoModeButtonSwitch: Switch
     private lateinit var autoModeSubContainer: LinearLayout
     private lateinit var hideFromRecentsSwitch: Switch
     private var keepaliveExpanded = false
+    private var updatingModeSwitch = false
 
     /** 日志是否展开（默认收起，仅显示 5 行） */
     private var logExpanded = false
@@ -85,6 +88,7 @@ class MainActivity : AppCompatActivity() {
         capturedInfoText = findViewById(R.id.captured_info_text)
         logText = findViewById(R.id.log_text)
         logScroll = findViewById(R.id.log_scroll)
+        logNavContainer = findViewById(R.id.log_nav_container)
         logSwitch = findViewById(R.id.log_switch)
         btnToggleLog = findViewById(R.id.btn_toggle_log)
         editHost = findViewById(R.id.edit_host)
@@ -103,6 +107,7 @@ class MainActivity : AppCompatActivity() {
         snapshotButtonSwitch = findViewById(R.id.snapshot_button_switch)
         volumeSnapshotSwitch = findViewById(R.id.volume_snapshot_switch)
         autoModeSwitch = findViewById(R.id.auto_mode_switch)
+        manualModeSwitch = findViewById(R.id.manual_mode_switch)
         autoModeTileSwitch = findViewById(R.id.auto_mode_tile_switch)
         autoModeVolumeSwitch = findViewById(R.id.auto_mode_volume_switch)
         autoModeButtonSwitch = findViewById(R.id.auto_mode_button_switch)
@@ -114,6 +119,7 @@ class MainActivity : AppCompatActivity() {
         HistoryStore.init(this)
         LearningMode.load(this)
         AdFeatureStore.init(this)
+        SnapshotRecordStore.init(this)
         val logEnabled = prefs.getBoolean("log_enabled", false)
         AppLog.enabled = logEnabled
         logSwitch.isChecked = logEnabled
@@ -152,19 +158,18 @@ class MainActivity : AppCompatActivity() {
         CapturePipeline.autoModeVolume = prefs.getBoolean("auto_mode_volume", true)
         CapturePipeline.autoModeButton = prefs.getBoolean("auto_mode_button", true)
         autoModeSwitch.isChecked = CapturePipeline.autoMode
+        manualModeSwitch.isChecked = !CapturePipeline.autoMode
         autoModeTileSwitch.isChecked = CapturePipeline.autoModeTile
         autoModeVolumeSwitch.isChecked = CapturePipeline.autoModeVolume
         autoModeButtonSwitch.isChecked = CapturePipeline.autoModeButton
         applyAutoModeSubVisibility()
         autoModeSwitch.setOnCheckedChangeListener { _, checked ->
-            CapturePipeline.autoMode = checked
-            prefs.edit().putBoolean("auto_mode", checked).commit()
-            if (checked) {
-                setAutoSub(true, true, true)
-            } else {
-                setAutoSub(false, false, false)
-            }
-            applyAutoModeSubVisibility()
+            if (updatingModeSwitch) return@setOnCheckedChangeListener
+            setAutoMode(checked)
+        }
+        manualModeSwitch.setOnCheckedChangeListener { _, checked ->
+            if (updatingModeSwitch) return@setOnCheckedChangeListener
+            setAutoMode(!checked)
         }
         autoModeTileSwitch.setOnCheckedChangeListener { _, checked ->
             CapturePipeline.autoModeTile = checked
@@ -205,6 +210,10 @@ class MainActivity : AppCompatActivity() {
         // 历史记录入口卡片：点击进入独立空间
         historyEntry.setOnClickListener {
             startActivity(Intent(this, HistoryActivity::class.java))
+        }
+        // 快照记录入口卡片：点击进入快照记录空间
+        findViewById<View>(R.id.snapshot_record_entry).setOnClickListener {
+            startActivity(Intent(this, SnapshotRecordActivity::class.java))
         }
         findViewById<Button>(R.id.btn_save_host).setOnClickListener {
             saveHostPort()
@@ -362,10 +371,17 @@ class MainActivity : AppCompatActivity() {
         renderLog()
     }
 
-    /** 根据展开状态设置按钮文字与日志区高度 */
+    /** 根据展开状态设置按钮文字与日志区显示/隐藏 */
     private fun applyLogExpandState() {
         btnToggleLog.text = if (logExpanded) "收起" else "展开"
-        setLogScrollHeightDp(if (logExpanded) 360 else 120)
+        if (logExpanded) {
+            logScroll.visibility = View.VISIBLE
+            logNavContainer.visibility = View.VISIBLE
+            setLogScrollHeightDp(360)
+        } else {
+            logScroll.visibility = View.GONE
+            logNavContainer.visibility = View.GONE
+        }
     }
 
     private fun setLogScrollHeightDp(dp: Int) {
@@ -412,6 +428,22 @@ class MainActivity : AppCompatActivity() {
         }
         startActivity(Intent.createChooser(share, "分享日志"))
         AppLog.i("已导出日志文件: ${file.name}")
+    }
+
+    /** 设置自动模式（true=自动，false=手动），同步两个互斥开关与子开关 */
+    private fun setAutoMode(enabled: Boolean) {
+        updatingModeSwitch = true
+        CapturePipeline.autoMode = enabled
+        prefs.edit().putBoolean("auto_mode", enabled).commit()
+        autoModeSwitch.isChecked = enabled
+        manualModeSwitch.isChecked = !enabled
+        if (enabled) {
+            setAutoSub(true, true, true)
+        } else {
+            setAutoSub(false, false, false)
+        }
+        applyAutoModeSubVisibility()
+        updatingModeSwitch = false
     }
 
     /** 根据总开关显示/隐藏自动模式子开关 */

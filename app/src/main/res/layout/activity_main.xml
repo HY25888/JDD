@@ -303,11 +303,31 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
 
-        <!-- 自动/手动模式切换 -->
+        <!-- 手动模式（与自动模式互斥） -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="手动模式（激活后手动点击目标控件录入规则）"
+                android:textSize="14sp" />
+
+            <Switch
+                android:id="@+id/manual_mode_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- 自动模式（与手动模式互斥） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -420,6 +440,39 @@
             android:paddingRight="16dp"
             android:text="提示：隐藏卡片最好是先长按后台任务卡片让系统给JDD上锁再开启隐藏，不然一键清空的时候有可能清空掉已隐藏的卡片"
             android:textSize="11sp" />
+
+        <!-- 快照记录（入口卡片，点击进入快照记录空间） -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="快照记录"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/snapshot_record_entry"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="#F2F2F2"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="查看增强版快照"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="＞"
+                android:textSize="14sp" />
+        </LinearLayout>
 
         <!-- 历史记录（文件夹入口卡片，点击进入独立空间查看全部） -->
         <TextView
@@ -604,14 +657,15 @@
                 android:text="分享" />
         </LinearLayout>
 
-        <!-- 日志内容（独立容器，单独滚动，不带动外层页面） -->
+        <!-- 日志内容（独立容器，单独滚动，不带动外层页面；折叠时隐藏） -->
         <ScrollView
             android:id="@+id/log_scroll"
             android:layout_width="match_parent"
             android:layout_height="120dp"
             android:layout_marginTop="8dp"
             android:background="#0F000000"
-            android:fillViewport="true">
+            android:fillViewport="true"
+            android:visibility="gone">
 
             <TextView
                 android:id="@+id/log_text"
@@ -623,13 +677,15 @@
                 android:textSize="11sp" />
         </ScrollView>
 
-        <!-- 固定导航按钮（不随日志滚动） -->
+        <!-- 固定导航按钮（不随日志滚动；折叠时隐藏） -->
         <LinearLayout
+            android:id="@+id/log_nav_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:visibility="gone">
 
             <Button
                 android:id="@+id/btn_log_top"
